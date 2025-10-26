@@ -1,42 +1,44 @@
 require("dotenv").config();
 const express = require("express");
-const mongoose = require("mongoose");
 const morgan = require("morgan");
 const cors = require("cors");
+const connectDB = require("./config/db"); // 1. Imports DB connection setup
 
+// --- Import All Routes ---
 const authRoutes = require("./routes/auth");
+const clubRoutes = require("./routes/clubs");
+const eventRoutes = require("./routes/events");
+const qrRoutes = require("./routes/qr"); // From the refactoring plan
+const adminRoutes = require("./routes/admin"); // From the refactoring plan
+
+// --- Database Connection ---
+// Execute the function to connect to MongoDB Atlas.
+connectDB();
 
 const app = express();
 
-// Middleware
-app.use(express.json());
-app.use(cors());
-app.use(morgan("dev"));
+// --- Middleware ---
+app.use(morgan("dev")); // HTTP request logger
+app.use(express.json()); // Body parser for JSON data
+app.use(cors()); // CORS enabled for frontend connection
 
-// Routes
+// --- Mount All Routes ---
 app.use("/api/auth", authRoutes);
+app.use("/api/clubs", clubRoutes);
+app.use("/api/events", eventRoutes);
+app.use("/api/qr", qrRoutes);
+app.use("/api/admin", adminRoutes);
 
-// Basic health
+// --- Basic Health Check ---
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
-// Start server after DB connection
+// NOTE: You would typically mount your error handlers here:
+// app.use(notFound);
+// app.use(errorHandler);
+
+// --- Server Start ---
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI;
-
-if (!MONGO_URI) {
-  console.error("MONGO_URI missing in environment.");
-  process.exit(1);
-}
-
-mongoose
-  .connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => {
-    console.log("MongoDB connected");
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error("MongoDB connection error:", err);
-    process.exit(1);
-  });
+// Server starts immediately. DB connection success is logged in config/db.js.
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

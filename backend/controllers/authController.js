@@ -1,119 +1,99 @@
-const { validationResult } = require("express-validator");
+const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
-
-if (!JWT_SECRET) {
-  console.error("JWT_SECRET not set in environment variables.");
-  process.exit(1);
-}
-
-exports.register = async (req, res) => {
-  // Validate input
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(422).json({ errors: errors.array() });
-  }
-
-  const { name, email, password, role } = req.body;
-
+// @desc    Register a new user
+// @route   POST /api/auth/register
+const registerUser = async (req, res) => {
   try {
-    // Check existing user
-    const existing = await User.findOne({ email });
-    if (existing) {
-      return res.status(409).json({ message: "Email already registered." });
+    const { name, email, password } = req.body;
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res
+        .status(400)
+        .json({ message: "User with this email already exists." });
     }
 
-    // Hash password
     const salt = await bcrypt.genSalt(10);
-    const hashed = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-    const user = new User({
+    const newUser = new User({
       name,
       email,
-      password: hashed,
-      role: role || "student",
+      password: hashedPassword,
     });
 
-    await user.save();
+    await newUser.save();
 
-    // Create token (no sensitive data)
-    const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, {
-      expiresIn: JWT_EXPIRES_IN,
-    });
-
-    res.status(201).json({
-      message: "User registered successfully.",
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
-      token,
-    });
-  } catch (err) {
-    console.error("Register error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(201).json({ message: "User registered successfully!" });
+  } catch (error) {
+    console.error("Registration Error:", error);
+    res.status(500).json({ message: "Server error during registration." });
   }
 };
 
-exports.login = async (req, res) => {
-  // Validate input
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(422).json({ errors: errors.array() });
-  }
-
-  const { email, password } = req.body;
-
+// @desc    Authenticate (login) a user
+// @route   POST /api/auth/login
+const loginUser = async (req, res) => {
   try {
-    const user =
-      (await User.findOne({ email }).select("+password")) ||
-      (await User.findOne({ email }));
+    const { email, password } = req.body;
 
-    // If you used select: false on password in schema you'd use .select('+password'); here it's stored by default.
+    const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({ message: "Invalid credentials." });
+      return res
+        .status(400)
+        .json({ message: "Invalid credentials. Please try again." });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials." });
+      return res
+        .status(400)
+        .json({ message: "Invalid credentials. Please try again." });
     }
 
-    const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, {
-      expiresIn: JWT_EXPIRES_IN,
-    });
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" } // Token expires in 1 day
+    );
 
     res.json({
-      message: "Logged in successfully.",
+      message: "Login successful!",
+      token,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
       },
-      token,
     });
-  } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ message: "Server error" });
+  } catch (error) {
+    console.error("Login Error:", error);
+    res.status(500).json({ message: "Server error during login." });
   }
 };
 
-// Optional: get current user info (protected)
-exports.me = async (req, res) => {
+// @desc    Get current logged-in user's details
+// @route   GET /api/auth/me
+const getCurrentUser = async (req, res) => {
   try {
-    // req.user is set by middleware
+    // req.user is set by the authMiddleware from the decoded token payload
     const user = await User.findById(req.user.userId).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found." });
-    res.json({ user });
-  } catch (err) {
-    console.error("Me error:", err);
-    res.status(500).json({ message: "Server error" });
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error("Get User Error:", error);
+    res.status(500).json({ message: "Server error." });
   }
+};
+
+// V--- CRITICAL FIX: Ensure the functions are bundled in an object and exported ---V
+module.exports = {
+  registerUser,
+  loginUser,
+  getCurrentUser,
 };

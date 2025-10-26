@@ -1,35 +1,47 @@
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
-const eventRegistrationSchema = new Schema(
+const EventRegistrationSchema = new Schema(
   {
-    event: {
-      type: Schema.Types.ObjectId,
-      ref: "Event",
-      required: true,
-    },
+    // Link to the User who registered
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    status: {
-      type: String,
-      enum: ["registered", "attended"],
-      default: "registered",
+
+    // Link to the Event being registered for
+    event: {
+      type: Schema.Types.ObjectId,
+      ref: "Event",
+      required: true,
     },
+
+    // Unique identifier used for the QR code image data
     qrCodeIdentifier: {
-      // The unique string we'll put in the QR code
       type: String,
       required: true,
       unique: true,
+      // You can safely remove the custom validator, as 'unique: true' handles this
+    },
+
+    // Status of the attendance
+    status: {
+      type: String,
+      enum: ["registered", "attended", "cancelled"],
+      default: "registered",
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    // Prevents a single user from registering for the same event multiple times
+    index: { user: 1, event: 1, unique: true },
+  }
 );
 
-const EventRegistration = mongoose.model(
-  "EventRegistration",
-  eventRegistrationSchema
-);
+// V--- CRITICAL FIX: Check if the model already exists before compiling ---V
+const EventRegistration =
+  mongoose.models.EventRegistration ||
+  mongoose.model("EventRegistration", EventRegistrationSchema);
+
 module.exports = EventRegistration;

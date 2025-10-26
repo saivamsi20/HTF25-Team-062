@@ -1,47 +1,48 @@
 const jwt = require("jsonwebtoken");
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error("JWT_SECRET not set in environment variables.");
-  process.exit(1);
-}
-
 /**
- * authenticate middleware:
- * - checks Authorization header for Bearer <token>
- * - sets req.user = { userId, role, iat, exp }
+ * @desc Middleware to check for a valid JSON Web Token (JWT) in the request header.
+ * If valid, it attaches the user's ID and role to the request object (req.user).
  */
-exports.authenticate = (req, res, next) => {
-  const authHeader = req.headers.authorization || req.headers.Authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "Unauthorized. Token missing." });
+const authMiddleware = (req, res, next) => {
+  // 1. Get token from header
+  // The token is expected in the format: "Bearer <token>"
+  const authHeader = req.header("authorization");
+
+  // 2. Check if token header exists at all
+  if (!authHeader) {
+    return res.status(401).json({ message: "No token, authorization denied" });
   }
 
-  const token = authHeader.split(" ")[1];
+  // Split the header and check if it follows the "Bearer <token>" format
+  const parts = authHeader.split(" ");
+  const token = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : null;
 
+  // 3. Check if the token part is present
+  if (!token) {
+    return res
+      .status(401)
+      .json({
+        message:
+          "Malformed token or missing Bearer prefix, authorization denied",
+      });
+  }
+
+  // 4. Verify token
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // contains userId and role
+    // jwt.verify decodes the token using your JWT_SECRET from the .env file
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Attach the user's payload (userId, role) to the request object
+    // This makes the user data available to the controller function (e.g., getCurrentUser)
+    req.user = decoded;
+
+    // Move on to the next function in the route chain (the controller)
     next();
   } catch (err) {
-    return res.status(401).json({ message: "Invalid or expired token." });
+    // If verification fails (e.g., token is expired or tampered with)
+    res.status(401).json({ message: "Token is not valid" });
   }
 };
 
-/**
- * authorizeRole middleware:
- * - pass a list of allowed roles and verify req.user.role is one of them
- */
-exports.authorizeRole =
-  (...allowedRoles) =>
-  (req, res, next) => {
-    if (!req.user || !req.user.role) {
-      return res.status(403).json({ message: "Forbidden. Role not found." });
-    }
-    if (!allowedRoles.includes(req.user.role)) {
-      return res
-        .status(403)
-        .json({ message: "Forbidden. Insufficient permissions." });
-    }
-    next();
-  };
+module.exports = authMiddleware;
